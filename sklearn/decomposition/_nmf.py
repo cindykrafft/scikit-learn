@@ -1475,9 +1475,11 @@ class NMF(_BaseNMF):
         features.
 
     reconstruction_err_ : float
-        Frobenius norm of the matrix difference, or beta-divergence, between
-        the training data ``X`` and the reconstructed data ``WH`` from
-        the fitted model.
+        Distance between the training data ``X`` and the reconstructed data
+        ``WH`` from the fitted model: the Frobenius norm of the difference for
+        ``beta_loss='frobenius'``, and the square root of twice the
+        beta-divergence for the other losses (so that it reduces to the
+        Frobenius norm for ``beta_loss=2``).
 
     n_iter_ : int
         Actual number of iterations.
@@ -1914,9 +1916,11 @@ class MiniBatchNMF(_BaseNMF):
         features.
 
     reconstruction_err_ : float
-        Frobenius norm of the matrix difference, or beta-divergence, between
-        the training data `X` and the reconstructed data `WH` from
-        the fitted model.
+        Distance between the training data `X` and the reconstructed data
+        `WH` from the fitted model: the Frobenius norm of the difference for
+        `beta_loss='frobenius'`, and the square root of twice the
+        beta-divergence for the other losses (so that it reduces to the
+        Frobenius norm for `beta_loss=2`).
 
     n_iter_ : int
         Actual number of started iterations over the whole dataset.
