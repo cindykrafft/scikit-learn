@@ -375,6 +375,49 @@ def test_pca_solver_equivalence(
 
 
 @pytest.mark.parametrize(
+    "dtype, offset",
+    [(np.float64, 1e6), (np.float64, 1e8), (np.float32, 1e2), (np.float32, 1e3)],
+)
+def test_pca_covariance_eigh_large_offset(global_random_seed, dtype, offset):
+    # The covariance_eigh solver must not lose the variance to cancellation
+    # when the features carry a large common offset (e.g. timestamps or
+    # genomic coordinates with a small spread around a large mean, or float32
+    # intensities in the hundreds). It has to agree with the full solver on
+    # the same data, and with the offset-free fit up to the representation
+    # error of the offset values.
+    rng = np.random.RandomState(global_random_seed)
+    n_samples, n_features = 2000, 5
+    X = rng.standard_normal((n_samples, n_features)) @ rng.standard_normal(
+        (n_features, n_features)
+    )
+    X = X.astype(dtype)
+    X_offset = (X + offset).astype(dtype)
+    rtol = 1e-9 if dtype == np.float64 else 1e-5
+    pca_ref = PCA(n_components=n_features - 1, svd_solver="full").fit(X)
+    pca_full = PCA(n_components=n_features - 1, svd_solver="full").fit(X_offset)
+    pca_cov = PCA(n_components=n_features - 1, svd_solver="covariance_eigh").fit(
+        X_offset
+    )
+    assert_allclose(
+        pca_cov.explained_variance_, pca_full.explained_variance_, rtol=rtol
+    )
+    assert_allclose(
+        pca_cov.explained_variance_ratio_, pca_full.explained_variance_ratio_, rtol=rtol
+    )
+    assert_allclose(
+        pca_cov.transform(X_offset),
+        pca_full.transform(X_offset),
+        rtol=1e-4,
+        atol=1e-6 if dtype == np.float64 else 1e-3,
+    )
+    assert_allclose(
+        pca_cov.explained_variance_,
+        pca_ref.explained_variance_,
+        rtol=1e-6 if dtype == np.float64 else 1e-4,
+    )
+
+
+@pytest.mark.parametrize(
     "X",
     [
         np.random.RandomState(0).randn(100, 80),

@@ -16,6 +16,7 @@ from sklearn.decomposition._base import _BasePCA
 from sklearn.utils import check_random_state
 from sklearn.utils._arpack import _init_arpack_v0
 from sklearn.utils._array_api import _cov, array_device, get_namespace
+from sklearn.utils._chunking import gen_batches, get_chunk_n_rows
 from sklearn.utils._param_validation import Interval, RealNotInt, StrOptions
 from sklearn.utils.extmath import _randomized_svd, fast_logdet, svd_flip
 from sklearn.utils.sparsefuncs import _implicit_column_offset, mean_variance_axis
@@ -585,11 +586,29 @@ class PCA(_BasePCA):
 
         else:
             assert self._fit_svd_solver == "covariance_eigh"
-            # Center the covariance post-hoc (without centering X first) to
-            # avoid an unnecessary copy of X. The mean_ attribute is still
-            # needed to center test data in the transform method.
             x_is_centered = False
-            C = _cov(X, ddof=1, mean=self.mean_, xp=xp)
+            if issparse(X):
+                # Sparse input cannot be centered without densifying it:
+                # center the covariance post-hoc. The mean_ attribute is still
+                # needed to center test data in the transform method.
+                C = _cov(X, ddof=1, mean=self.mean_, xp=xp)
+            else:
+                # Accumulate the covariance of centered row batches. This has
+                # the same memory footprint as the post-hoc formula
+                # X.T @ X - n * mean @ mean.T (no full centered copy of X) but
+                # none of its cancellation error: when the features carry a
+                # large common offset, X.T @ X is dominated by n * mean^2 and
+                # the subtraction loses the variance to rounding.
+                C = xp.zeros(
+                    (n_features, n_features), dtype=X.dtype, device=array_device(X)
+                )
+                batch_size = get_chunk_n_rows(
+                    row_bytes=8 * n_features, max_n_rows=n_samples
+                )
+                for batch in gen_batches(n_samples, batch_size):
+                    X_batch = X[batch] - self.mean_
+                    C += X_batch.T @ X_batch
+                C /= n_samples - 1
             eigenvals, eigenvecs = xp.linalg.eigh(C)
 
             # When X is a scipy sparse matrix, the following two datastructures
